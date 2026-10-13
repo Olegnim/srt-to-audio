@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  python main.py                       обработать все .srt из папки input\n"
             "  python main.py -f movie.srt          только один файл\n"
             "  python main.py -f movie.srt -o voice переименовать результат\n"
-            "  python main.py --voice ru-RU-DmitryNeural --rate \"+10%\"\n"
+            "  python main.py --voice ru-RU-SvetlanaNeural --rate \"+10%\"\n"
             "  python main.py --list-voices ru      посмотреть доступные голоса\n"
         ),
     )

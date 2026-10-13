@@ -5,7 +5,7 @@
     "output_extension": ".mp3"
   },
   "voice": {
-    "name": "ru-RU-SvetlanaNeural",
+    "name": "ru-RU-DmitryNeural",
     "rate": "+0%",
     "volume": "+0%",
     "pitch": "+0Hz"

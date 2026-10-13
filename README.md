@@ -3,6 +3,8 @@
 Озвучивает субтитры в формате **SRT** и сохраняет результат в **MP3**.
 Синтез речи работает через [edge-tts](https://github.com/rany2/edge-tts) —
 бесплатный онлайн-сервис Microsoft Edge, ключи API не нужны (только интернет).
+По умолчанию используется мужской русский голос `ru-RU-DmitryNeural`,
+другие варианты — в разделе [«Голоса»](#голоса).
 
 ## Установка
 
@@ -69,7 +71,7 @@ python3 main.py         # macOS / Linux, если окружение не акт
 python main.py                            # озвучить все .srt из папки input
 python main.py -f lesson.srt              # только один файл
 python main.py -f lesson.srt -o voice     # своё имя результата (output/voice.mp3)
-python main.py --voice ru-RU-DmitryNeural # выбрать голос
+python main.py --voice ru-RU-SvetlanaNeural # выбрать голос (женский)
 python main.py --rate "+10%" --pitch "-20Hz"   # темп и тон (кавычки — для PowerShell)
 python main.py --list-voices ru           # список доступных голосов
 python main.py --overwrite                # перезаписать существующие mp3
@@ -92,6 +94,38 @@ python main.py --overwrite                # перезаписать сущес�
 Коды возврата: `0` — успех, `1` — часть файлов не удалось обработать,
 `2` — ошибка настроек или аргументов, `130` — прервано пользователем.
 
+## Голоса
+
+По умолчанию используется мужской голос **`ru-RU-DmitryNeural`**.
+Полный список доступных голосов:
+
+```bash
+python main.py --list-voices        # все голоса (их больше 300)
+python main.py --list-voices ru     # только русские
+```
+
+Русские голоса:
+
+| Голос | Пол | Комментарий |
+| --- | --- | --- |
+| `ru-RU-DmitryNeural` | мужской | **по умолчанию** |
+| `ru-RU-SvetlanaNeural` | женский | женский русский голос |
+
+Мультиязычные голоса понимают текст и на русском, но тембр «иностранный» —
+их удобно использовать, чтобы получить другую манеру чтения:
+
+| Голос | Пол | Голос | Пол |
+| --- | --- | --- | --- |
+| `en-US-AndrewMultilingualNeural` | мужской | `en-US-AvaMultilingualNeural` | женский |
+| `en-US-BrianMultilingualNeural` | мужской | `en-US-EmmaMultilingualNeural` | женский |
+| `en-AU-WilliamMultilingualNeural` | мужской | `fr-FR-VivienneMultilingualNeural` | женский |
+| `de-DE-FlorianMultilingualNeural` | мужской | `de-DE-SeraphinaMultilingualNeural` | женский |
+| `fr-FR-RemyMultilingualNeural` | мужской | `pt-BR-ThalitaMultilingualNeural` | женский |
+| `it-IT-GiuseppeMultilingualNeural` | мужской | `ko-KR-HyunsuMultilingualNeural` | мужской |
+
+Выбрать голос можно разово (`--voice ...`) или постоянно — в `config.json`,
+в поле `voice.name`.
+
 ## Настройки
 
 Все параметры хранятся в `config.json` в корне проекта:
@@ -104,7 +138,7 @@ python main.py --overwrite                # перезаписать сущес�
     "output_extension": ".mp3"
   },
   "voice": {
-    "name": "ru-RU-SvetlanaNeural",
+    "name": "ru-RU-DmitryNeural",
     "rate": "+0%",
     "volume": "+0%",
     "pitch": "+0Hz"

@@ -30,7 +30,7 @@ class PathsConfig:
 class VoiceConfig:
     """Параметры синтеза речи edge-tts."""
 
-    name: str = "ru-RU-SvetlanaNeural"
+    name: str = "ru-RU-DmitryNeural"
     rate: str = "+0%"
     volume: str = "+0%"
     pitch: str = "+0Hz"
