@@ -9,7 +9,7 @@ from typing import Protocol, Sequence
 
 from .config import Settings, VoiceConfig
 from .srt_parser import cues_to_text, parse_srt, read_srt
-from .tts import synthesize
+from .tts import TtsError, synthesize
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])[\s\n]+")
 
@@ -147,8 +147,27 @@ async def _synthesize_chunks(
             reported = size
             reporter.update(f"Фрагмент {number}/{total}: {size / 1024:.0f} КБ")
 
+        def on_retry(
+            attempt: int,
+            attempts: int,
+            delay: float,
+            error: TtsError,
+            number: int = number,
+            total: int = total,
+        ) -> None:
+            reporter.stage(
+                f"Фрагмент {number}/{total}: {error}; "
+                f"повтор {attempt}/{attempts} через {delay:.0f} с"
+            )
+
         audio.extend(
-            await synthesize(chunk, voice, on_bytes=on_bytes, retries=retries)
+            await synthesize(
+                chunk,
+                voice,
+                on_bytes=on_bytes,
+                retries=retries,
+                on_retry=on_retry,
+            )
         )
         reporter.update(f"Фрагмент {number}/{total}: готово, {len(chunk)} символов")
 

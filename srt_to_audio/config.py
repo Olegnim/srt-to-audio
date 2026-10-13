@@ -43,7 +43,7 @@ class ProcessingConfig:
     segment_joiner: str = "\n"
     chunk_max_chars: int = 3000
     overwrite: bool = False
-    retries: int = 3
+    retries: int = 4
 
 
 @dataclass
