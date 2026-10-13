@@ -1,0 +1,19 @@
+{
+  "paths": {
+    "input_dir": "input",
+    "output_dir": "output",
+    "output_extension": ".mp3"
+  },
+  "voice": {
+    "name": "ru-RU-SvetlanaNeural",
+    "rate": "+0%",
+    "volume": "+0%",
+    "pitch": "+0Hz"
+  },
+  "processing": {
+    "segment_joiner": "\n",
+    "chunk_max_chars": 3000,
+    "overwrite": false,
+    "retries": 3
+  }
+}

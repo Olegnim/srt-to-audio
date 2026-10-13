@@ -179,3 +179,18 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# --- Локальные данные srt-to-audio ---
+/input/*
+!/input/.gitkeep
+/output/*
+!/output/.gitkeep
+.agent-cache/
+
+# --- OS и редакторы ---
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
