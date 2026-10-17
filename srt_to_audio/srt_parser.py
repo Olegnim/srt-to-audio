@@ -13,6 +13,7 @@ _TIMING_RE = re.compile(
     r"(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})"
 )
 _INDEX_RE = re.compile(r"^\d+$")
+_TIMESTAMP_RE = re.compile(r"^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})$")
 _MARKUP_RE = re.compile(r"</?[a-zA-Z][^>]*>|\{\\[^}]*\}|\{[a-zA-Z][^}]*\}")
 
 
@@ -94,6 +95,34 @@ def cues_to_text(cues: Iterable[Cue], joiner: str = "\n") -> str:
     """Склеивает реплики в сплошной текст для озвучки."""
     parts = [cue.text for cue in cues if cue.text]
     return joiner.join(parts).strip()
+
+
+def timestamp_seconds(value: str) -> float:
+    """Переводит метку SRT ("00:01:02,500") в секунды."""
+    match = _TIMESTAMP_RE.match(value.strip())
+    if not match:
+        raise ValueError(f"Неверная метка времени: {value!r}")
+    hours, minutes, seconds, fraction = match.groups()
+    return (
+        int(hours) * 3600
+        + int(minutes) * 60
+        + int(seconds)
+        + float(f"0.{fraction}")
+    )
+
+
+def timeline_seconds(cues: Iterable[Cue]) -> float:
+    """Длительность субтитров: время окончания последней реплики.
+
+    Это ориентир для озвучки: если mp3 длиннее, речь не укладывается в таймкод.
+    """
+    ends: list[float] = []
+    for cue in cues:
+        try:
+            ends.append(timestamp_seconds(cue.end))
+        except ValueError:
+            continue
+    return max(ends) if ends else 0.0
 
 
 def _clean(line: str) -> str:

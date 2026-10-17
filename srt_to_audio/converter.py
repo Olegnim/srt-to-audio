@@ -7,11 +7,20 @@ import re
 from pathlib import Path
 from typing import Protocol, Sequence
 
-from .config import Settings, VoiceConfig
-from .srt_parser import cues_to_text, parse_srt, read_srt
+from .config import Settings, VoiceConfig, format_rate_percent
+from .mp3 import duration_seconds
+from .srt_parser import Cue, cues_to_text, parse_srt, read_srt, timeline_seconds
 from .tts import TtsError, synthesize
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])[\s\n]+")
+
+# Подгонка под таймкод: расхождение до 2 % считаем нормой (это доли секунды
+# на длинном файле), переозвучиваем не больше двух раз — обычно хватает одного.
+_FIT_TOLERANCE = 0.02
+_FIT_ATTEMPTS = 2
+# Замедление ограничено: на -100 % синтезатор просто останавливается, поэтому
+# дальше -50 % речь не замедляем (как и разрешает edge-tts).
+_MIN_RATE_PERCENT = -50
 
 
 class ConverterError(Exception):
@@ -112,6 +121,7 @@ def srt_to_mp3(
     audio = asyncio.run(
         _synthesize_chunks(chunks, voice, reporter, settings.processing.retries)
     )
+    audio = _match_timeline(audio, chunks, cues, settings, reporter)
 
     reporter.stage(f"Записываю {output_path.name} ({len(audio) / 1024:.0f} КБ)")
     try:
@@ -121,6 +131,110 @@ def srt_to_mp3(
         raise ConverterError(f"Не удалось записать {output_path}: {exc}") from exc
 
     return output_path
+
+
+def _match_timeline(
+    audio: bytes,
+    chunks: Sequence[str],
+    cues: Sequence[Cue],
+    settings: Settings,
+    reporter: Reporter,
+) -> bytes:
+    """Подгоняет длительность озвучки под длительность видео (таймкод).
+
+    Ориентир — время окончания последней реплики субтитров. Темп чтения
+    синтезатора не совпадает с темпом исходной речи: в плотных субтитрах
+    голос не успевает (mp3 длиннее), в разреженных — наоборот, заканчивает
+    раньше. Поэтому длительность измеряется по mp3-фреймам и, если она
+    расходится с ориентиром больше чем на 2 %, речь переозвучивается с
+    другим темпом — в сторону ускорения или замедления.
+    """
+    timeline = timeline_seconds(cues)
+    duration = duration_seconds(audio)
+    if timeline <= 0 or duration <= 0:
+        return audio
+
+    voice = settings.voice
+    if not settings.processing.fit_timeline:
+        _report_timeline(reporter, duration, timeline)
+        return audio
+
+    try:
+        rate = voice.rate_percent
+    except ValueError:
+        reporter.stage(
+            f"Темп {voice.rate!r} задан не в процентах — подгонку под таймкод пропускаю"
+        )
+        _report_timeline(reporter, duration, timeline)
+        return audio
+
+    limit = settings.processing.max_rate_percent
+    for _ in range(_FIT_ATTEMPTS):
+        if _fits_timeline(duration, timeline):
+            break
+
+        target = _required_rate_percent(rate, duration, timeline)
+        target = max(_MIN_RATE_PERCENT, min(target, limit))
+        if target == rate:
+            reporter.stage(
+                f"Озвучка расходится с таймкодом ({_format_time(duration)} против "
+                f"{_format_time(timeline)}), темп уже на пределе {voice.rate}"
+            )
+            break
+
+        reporter.stage(
+            f"{'Речь длиннее' if duration > timeline else 'Речь короче'} таймкода "
+            f"({_format_time(duration)} против {_format_time(timeline)}) — "
+            f"переозвучиваю с темпом {format_rate_percent(target)}"
+        )
+        voice = voice.with_rate_percent(target)
+        rate = target
+        audio = asyncio.run(
+            _synthesize_chunks(chunks, voice, reporter, settings.processing.retries)
+        )
+        duration = duration_seconds(audio)
+        if duration <= 0:
+            break
+
+    _report_timeline(reporter, duration, timeline)
+    return audio
+
+
+def _fits_timeline(duration: float, timeline: float) -> bool:
+    """Укладывается ли озвучка в таймкод с допустимым расхождением."""
+    return abs(duration / timeline - 1) <= _FIT_TOLERANCE
+
+
+def _required_rate_percent(rate_percent: int, duration: float, target: float) -> int:
+    """Считает темп, при котором озвучка займёт нужное время.
+
+    Длительность речи обратно пропорциональна темпу, поэтому пересчёт идёт
+    через коэффициент (1 + rate/100): например, при длительности 383 с и
+    ориентире 286 с нужен темп +34 %.
+    """
+    factor = 1 + rate_percent / 100
+    return round((factor * duration / target - 1) * 100)
+
+
+def _report_timeline(reporter: Reporter, duration: float, timeline: float) -> None:
+    """Сообщает итоговую длительность и расхождение с таймкодом."""
+    if duration <= 0 or timeline <= 0:
+        return
+    reporter.stage(
+        f"Длительность: {_format_time(duration)}, "
+        f"таймкод субтитров: {_format_time(timeline)} "
+        f"({duration / timeline - 1:+.0%})"
+    )
+
+
+def _format_time(seconds: float) -> str:
+    """Форматирует секунды как "6:23" или "1:02:03"."""
+    total = int(round(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
 
 
 async def _synthesize_chunks(

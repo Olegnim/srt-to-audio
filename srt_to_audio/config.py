@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, fields
+import re
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -35,6 +36,15 @@ class VoiceConfig:
     volume: str = "+0%"
     pitch: str = "+0Hz"
 
+    @property
+    def rate_percent(self) -> int:
+        """Темп речи в процентах (например, 35 для "+35%")."""
+        return parse_rate_percent(self.rate)
+
+    def with_rate_percent(self, percent: int) -> "VoiceConfig":
+        """Копия настроек голоса с другим темпом речи."""
+        return replace(self, rate=format_rate_percent(percent))
+
 
 @dataclass
 class ProcessingConfig:
@@ -44,6 +54,8 @@ class ProcessingConfig:
     chunk_max_chars: int = 3000
     overwrite: bool = False
     retries: int = 4
+    fit_timeline: bool = True
+    max_rate_percent: int = 100
 
 
 @dataclass
@@ -69,6 +81,25 @@ class Settings:
 def _resolve(value: str, base: Path) -> Path:
     path = Path(value).expanduser()
     return path if path.is_absolute() else (base / path).resolve()
+
+
+_RATE_RE = re.compile(r"^([+-]?)(\d{1,3})\s*%$")
+
+
+def parse_rate_percent(rate: str) -> int:
+    """Разбирает темп edge-tts ("+10%") в целое число процентов (10)."""
+    match = _RATE_RE.match(rate.strip())
+    if not match:
+        raise ValueError(
+            f"Темп должен быть в формате \"+10%\" или \"-20%\", получено: {rate!r}"
+        )
+    sign, value = match.groups()
+    return -int(value) if sign == "-" else int(value)
+
+
+def format_rate_percent(percent: int) -> str:
+    """Собирает темп edge-tts из числа процентов: 35 -> "+35%"."""
+    return f"{percent:+d}%"
 
 
 def _load_section(cls: type[T], raw: dict[str, Any], name: str) -> T:
@@ -103,6 +134,13 @@ def _validate(settings: Settings) -> None:
         )
     if not isinstance(settings.processing.retries, int) or settings.processing.retries < 0:
         raise ConfigError("Параметр processing.retries должен быть целым числом не меньше 0.")
+    max_rate = settings.processing.max_rate_percent
+    if not isinstance(max_rate, int) or not 0 <= max_rate <= 100:
+        raise ConfigError(
+            "Параметр processing.max_rate_percent должен быть целым числом от 0 до 100."
+        )
+    if not isinstance(settings.processing.fit_timeline, bool):
+        raise ConfigError("Параметр processing.fit_timeline должен быть true или false.")
 
 
 def load_settings(config_path: str | Path | None = None) -> Settings:

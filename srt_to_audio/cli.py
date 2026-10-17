@@ -106,6 +106,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ЯЗЫК",
         help="показать доступные голоса (необязательно префикс языка, например ru)",
     )
+    parser.add_argument(
+        "--no-fit",
+        dest="fit_timeline",
+        action="store_false",
+        default=None,
+        help="не подгонять длительность под таймкод субтитров (без автоподбора темпа)",
+    )
     parser.add_argument("--version", action="version", version=f"srt-to-audio {__version__}")
     return parser
 
@@ -184,6 +191,8 @@ def _apply_overrides(settings: Settings, args: argparse.Namespace) -> None:
         settings.voice.pitch = args.pitch
     if args.overwrite is not None:
         settings.processing.overwrite = args.overwrite
+    if args.fit_timeline is not None:
+        settings.processing.fit_timeline = args.fit_timeline
 
 
 def _select_files(name: str | None, settings: Settings) -> list[Path]:
