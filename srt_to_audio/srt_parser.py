@@ -91,12 +91,6 @@ def parse_srt(content: str) -> list[Cue]:
     return cues
 
 
-def cues_to_text(cues: Iterable[Cue], joiner: str = "\n") -> str:
-    """Склеивает реплики в сплошной текст для озвучки."""
-    parts = [cue.text for cue in cues if cue.text]
-    return joiner.join(parts).strip()
-
-
 def timestamp_seconds(value: str) -> float:
     """Переводит метку SRT ("00:01:02,500") в секунды."""
     match = _TIMESTAMP_RE.match(value.strip())

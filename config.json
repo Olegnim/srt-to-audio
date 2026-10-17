@@ -11,11 +11,13 @@
     "pitch": "+0Hz"
   },
   "processing": {
-    "segment_joiner": "\n",
     "chunk_max_chars": 3000,
     "overwrite": false,
     "retries": 4,
     "fit_timeline": true,
-    "max_rate_percent": 100
+    "max_rate_percent": 100,
+    "block_max_seconds": 12,
+    "block_align": "auto",
+    "block_gap_max_seconds": 2
   }
 }

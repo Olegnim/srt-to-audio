@@ -50,12 +50,18 @@ class VoiceConfig:
 class ProcessingConfig:
     """Как обрабатывать текст субтитров и результат."""
 
-    segment_joiner: str = "\n"
     chunk_max_chars: int = 3000
     overwrite: bool = False
     retries: int = 4
     fit_timeline: bool = True
     max_rate_percent: int = 100
+    block_max_seconds: float = 12.0
+    block_align: str = "auto"
+    block_gap_max_seconds: float = 2.0
+
+
+# Куда ставить озвученный блок внутри его окна в таймкоде.
+BLOCK_ALIGN_MODES = ("auto", "start", "end")
 
 
 @dataclass
@@ -141,6 +147,27 @@ def _validate(settings: Settings) -> None:
         )
     if not isinstance(settings.processing.fit_timeline, bool):
         raise ConfigError("Параметр processing.fit_timeline должен быть true или false.")
+    block_seconds = settings.processing.block_max_seconds
+    if isinstance(block_seconds, bool) or not isinstance(block_seconds, (int, float)) or (
+        block_seconds < 0
+    ):
+        raise ConfigError(
+            "Параметр processing.block_max_seconds должен быть числом не меньше 0 "
+            "(0 — озвучивать каждую реплику отдельно)."
+        )
+    if settings.processing.block_align not in BLOCK_ALIGN_MODES:
+        raise ConfigError(
+            "Параметр processing.block_align должен быть одним из: "
+            f"{', '.join(BLOCK_ALIGN_MODES)}."
+        )
+    block_gap = settings.processing.block_gap_max_seconds
+    if isinstance(block_gap, bool) or not isinstance(block_gap, (int, float)) or (
+        block_gap < 0
+    ):
+        raise ConfigError(
+            "Параметр processing.block_gap_max_seconds должен быть числом не меньше 0 "
+            "(пауза в субтитрах, которая ещё остаётся внутри блока)."
+        )
 
 
 def load_settings(config_path: str | Path | None = None) -> Settings:

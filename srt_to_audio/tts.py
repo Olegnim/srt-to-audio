@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+from dataclasses import dataclass
 from typing import Callable
 
 import edge_tts
@@ -17,6 +18,9 @@ _RETRY_BASE_SECONDS = 2.0
 _RETRY_MAX_SECONDS = 15.0
 _RETRY_JITTER = 0.25
 
+# Отметки слов приходят в единицах по 100 нс.
+_TICKS_PER_SECOND = 10_000_000
+
 _NO_AUDIO_MESSAGE = (
     "Сервис edge-tts не вернул аудио (временный сбой или ограничение частоты запросов)"
 )
@@ -24,6 +28,23 @@ _NO_AUDIO_MESSAGE = (
 
 class TtsError(Exception):
     """Ошибка обращения к сервису синтеза речи."""
+
+
+@dataclass(frozen=True)
+class Speech:
+    """Озвученный текст и границы самой речи внутри mp3-данных.
+
+    edge-tts добавляет к реплике служебную тишину (до ~0,25 с в начале и около
+    секунды в конце), из-за которой озвучка «не попадает» в таймкод. Границы
+    берутся из отметок слов, которые сервис присылает вместе с аудио.
+    ``words`` — время начала каждого слова от начала потока: по нему можно
+    восстановить паузы внутри слитно прочитанного блока.
+    """
+
+    audio: bytes
+    start: float
+    end: float
+    words: tuple[float, ...] = ()
 
 
 RetryCallback = Callable[[int, int, float, "TtsError"], None]
@@ -41,8 +62,8 @@ async def synthesize(
     on_bytes: Callable[[int], None] | None = None,
     retries: int = 0,
     on_retry: RetryCallback | None = None,
-) -> bytes:
-    """Озвучивает текст и возвращает mp3-данные, повторяя запрос при сбоях.
+) -> Speech:
+    """Озвучивает текст и возвращает mp3-данные с границами речи.
 
     ``on_retry`` вызывается перед каждой повторной попыткой и получает номер
     следующей попытки, их общее количество, паузу в секундах и ошибку.
@@ -69,23 +90,33 @@ async def _synthesize_once(
     text: str,
     voice: VoiceConfig,
     on_bytes: Callable[[int], None] | None,
-) -> bytes:
+) -> Speech:
     communicate = edge_tts.Communicate(
         text,
         voice.name,
         rate=voice.rate,
         volume=voice.volume,
         pitch=voice.pitch,
+        boundary="WordBoundary",
     )
 
     audio = bytearray()
+    speech_start: float | None = None
+    speech_end = 0.0
+    words: list[float] = []
     try:
         async for chunk in communicate.stream():
-            if chunk["type"] != "audio":
-                continue
-            audio.extend(chunk["data"])
-            if on_bytes is not None:
-                on_bytes(len(audio))
+            kind = chunk["type"]
+            if kind == "audio":
+                audio.extend(chunk["data"])
+                if on_bytes is not None:
+                    on_bytes(len(audio))
+            elif kind == "WordBoundary":
+                offset = chunk["offset"] / _TICKS_PER_SECOND
+                end = offset + chunk["duration"] / _TICKS_PER_SECOND
+                words.append(offset)
+                speech_start = offset if speech_start is None else min(speech_start, offset)
+                speech_end = max(speech_end, end)
     except edge_tts.exceptions.NoAudioReceived as exc:
         raise TtsError(_NO_AUDIO_MESSAGE) from exc
     except Exception as exc:  # сетевые и протокольные сбои edge-tts
@@ -93,7 +124,12 @@ async def _synthesize_once(
 
     if not audio:
         raise TtsError("Сервис edge-tts вернул пустой ответ.")
-    return bytes(audio)
+    return Speech(
+        audio=bytes(audio),
+        start=speech_start or 0.0,
+        end=speech_end,
+        words=tuple(words),
+    )
 
 
 async def list_voices(language_prefix: str | None = None) -> list[tuple[str, str]]:

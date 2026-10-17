@@ -111,7 +111,20 @@ def build_parser() -> argparse.ArgumentParser:
         dest="fit_timeline",
         action="store_false",
         default=None,
-        help="не подгонять длительность под таймкод субтитров (без автоподбора темпа)",
+        help="озвучить реплики подряд, без расстановки по таймкоду и ускорения",
+    )
+    parser.add_argument(
+        "--block-seconds",
+        type=float,
+        metavar="СЕК",
+        help="до какой длительности укрупнять блоки озвучки (0 — по реплике, "
+        "по умолчанию 12)",
+    )
+    parser.add_argument(
+        "--align",
+        choices=("auto", "start", "end"),
+        help="куда ставить блок в его окне: auto — с начала, а ускоренный к концу "
+        "(по умолчанию); start — всегда с начала; end — всегда к концу",
     )
     parser.add_argument("--version", action="version", version=f"srt-to-audio {__version__}")
     return parser
@@ -193,6 +206,10 @@ def _apply_overrides(settings: Settings, args: argparse.Namespace) -> None:
         settings.processing.overwrite = args.overwrite
     if args.fit_timeline is not None:
         settings.processing.fit_timeline = args.fit_timeline
+    if args.block_seconds is not None:
+        settings.processing.block_max_seconds = args.block_seconds
+    if args.align:
+        settings.processing.block_align = args.align
 
 
 def _select_files(name: str | None, settings: Settings) -> list[Path]:
