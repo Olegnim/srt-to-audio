@@ -27,7 +27,16 @@ _NO_AUDIO_MESSAGE = (
 
 
 class TtsError(Exception):
-    """Ошибка обращения к сервису синтеза речи."""
+    """Ошибка обращения к сервису синтеза речи.
+
+    ``retryable`` = False для ошибок, которые повтор не исправит: например,
+    edge-tts отвергает неверный формат темпа или громкости. Без этого флага
+    такая ошибка ждала бы пауз между попытками и только потом сообщала причину.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 @dataclass(frozen=True)
@@ -76,8 +85,10 @@ async def synthesize(
         try:
             return await _synthesize_once(text, voice, on_bytes)
         except TtsError as exc:
-            if attempt >= retries:
-                raise TtsError(f"{exc} (попыток: {total})") from exc
+            if not exc.retryable or attempt >= retries:
+                if exc.retryable:
+                    raise TtsError(f"{exc} (попыток: {total})") from exc
+                raise
             delay = _retry_delay(attempt)
             if on_retry is not None:
                 on_retry(attempt + 2, total, delay, exc)
@@ -91,14 +102,19 @@ async def _synthesize_once(
     voice: VoiceConfig,
     on_bytes: Callable[[int], None] | None,
 ) -> Speech:
-    communicate = edge_tts.Communicate(
-        text,
-        voice.name,
-        rate=voice.rate,
-        volume=voice.volume,
-        pitch=voice.pitch,
-        boundary="WordBoundary",
-    )
+    try:
+        communicate = edge_tts.Communicate(
+            text,
+            voice.name,
+            rate=voice.rate,
+            volume=voice.volume,
+            pitch=voice.pitch,
+            boundary="WordBoundary",
+        )
+    except (ValueError, TypeError) as exc:
+        # edge-tts проверяет формат голоса и темпа при создании объекта:
+        # повтор такой запрос не исправит, поэтому сразу сообщаем причину.
+        raise TtsError(f"Неверные параметры синтеза: {exc}", retryable=False) from exc
 
     audio = bytearray()
     speech_start: float | None = None

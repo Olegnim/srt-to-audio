@@ -14,6 +14,7 @@
     "chunk_max_chars": 3000,
     "overwrite": false,
     "retries": 4,
+    "request_concurrency": 3,
     "fit_timeline": true,
     "max_rate_percent": 100,
     "block_max_seconds": 12,

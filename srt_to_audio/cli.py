@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import sys
 from pathlib import Path
 
 from . import __version__
-from .config import ConfigError, Settings, load_settings
+from .config import ConfigError, Settings, load_settings, validate_settings
 from .converter import ConverterError, find_srt_files, output_path_for, srt_to_mp3
 from .srt_parser import SrtError
 from .tts import TtsError, list_voices
@@ -86,13 +87,15 @@ def build_parser() -> argparse.ArgumentParser:
         "-o",
         "--out",
         metavar="ИМЯ",
-        help="имя выходного файла без расширения (только для одного входного файла)",
+        help="имя выходного файла без расширения и без папок (только для одного входного файла)",
     )
     parser.add_argument("--voice", metavar="ГОЛОС", help="голос edge-tts")
     parser.add_argument("--rate", metavar="ТЕМП", help='темп речи, например "+10%%" или "-20%%"')
     parser.add_argument("--volume", metavar="ГРОМКОСТЬ", help='громкость, например "+0%%"')
     parser.add_argument("--pitch", metavar="ТОН", help='тон, например "+0Hz" или "-20Hz"')
-    parser.add_argument("--config", metavar="ПУТЬ", help="путь к файлу настроек (по умолчанию config.json)")
+    parser.add_argument(
+        "--config", metavar="ПУТЬ", help="путь к файлу настроек (по умолчанию config.json)"
+    )
     parser.add_argument(
         "--overwrite",
         action="store_true",
@@ -130,13 +133,45 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# Ключи, значения которых начинаются с минуса: argparse принимает "-20%" за
+# новый ключ и сообщает "expected one argument". Такие пары склеиваем в "--rate=-20%".
+_SIGNED_VALUE_OPTIONS = ("--rate", "--volume", "--pitch")
+_SIGNED_VALUE_RE = re.compile(r"^[+-]\d+(?:%|Hz)?$")
+
+
+def _normalize_argv(argv: list[str]) -> list[str]:
+    """Готовит аргументы к разбору: ``--rate -20%`` -> ``--rate=-20%``."""
+    if not argv:
+        return list(argv)
+
+    result: list[str] = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if (
+            token in _SIGNED_VALUE_OPTIONS
+            and index + 1 < len(argv)
+            and _SIGNED_VALUE_RE.match(argv[index + 1])
+        ):
+            result.append(f"{token}={argv[index + 1]}")
+            index += 2
+            continue
+        result.append(token)
+        index += 1
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     _setup_console()
-    args = build_parser().parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(_normalize_argv(raw_argv))
 
     try:
         settings = load_settings(args.config)
         _apply_overrides(settings, args)
+        # Значения из командной строки проверяются теми же правилами, что и файл
+        # настроек: иначе неверный --rate всплывал бы уже на синтезе.
+        validate_settings(settings)
     except ConfigError as exc:
         return _fail(str(exc))
 
@@ -156,6 +191,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.out and len(files) > 1:
         return _fail("Ключ --out можно использовать только с одним входным файлом.")
+    if args.out and Path(args.out).name != args.out.strip():
+        return _fail(f"Ключ --out принимает только имя файла, без папок: {args.out}")
 
     print(f"Голос: {settings.voice.name}  (темп {settings.voice.rate})")
     print(f"Вход:  {settings.input_dir}")

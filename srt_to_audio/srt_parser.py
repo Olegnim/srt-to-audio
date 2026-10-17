@@ -97,11 +97,14 @@ def timestamp_seconds(value: str) -> float:
     if not match:
         raise ValueError(f"Неверная метка времени: {value!r}")
     hours, minutes, seconds, fraction = match.groups()
+    # Дробная часть — это доли секунды, а не десятичная запись: "5" в метке
+    # "00:00:01,5" означает 0,5 с только в формате с тремя знаками (",500").
+    # Поэтому делим на 10 в степени числа знаков, а не подставляем "0.{fraction}".
     return (
         int(hours) * 3600
         + int(minutes) * 60
         + int(seconds)
-        + float(f"0.{fraction}")
+        + int(fraction) / 10 ** len(fraction)
     )
 
 

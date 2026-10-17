@@ -26,9 +26,6 @@ _FIT_ATTEMPTS = 2
 _TRIM_TAIL_SECONDS = 0.1
 # Пауза между репликами, когда привязка к таймкоду отключена (--no-fit).
 _NO_FIT_PAUSE_SECONDS = 0.25
-# Сколько запросов к edge-tts отправлять одновременно: больше — быстрее, но
-# сервис начинает отвечать 403 и запросы уходят в повторы.
-_REQUEST_CONCURRENCY = 3
 # Сдвиг реплики вперёд меньше этого значения считаем нормой.
 _SHIFT_TOLERANCE = 0.05
 # Пауза в субтитрах длиннее этого значения по умолчанию режет укрупнённый блок
@@ -268,7 +265,12 @@ def _split_block(fragment: Fragment, max_chars: int) -> list[Fragment]:
 
 def output_path_for(srt_path: Path, settings: Settings, name: str | None = None) -> Path:
     """Строит путь к mp3-файлу для исходных субтитров."""
-    stem = name or srt_path.stem
+    if name:
+        # Берём только имя файла: иначе "--out ../evil" записал бы результат
+        # вне папки output.
+        stem = Path(name).name or srt_path.stem
+    else:
+        stem = srt_path.stem
     return settings.output_dir / f"{stem}{settings.paths.output_extension}"
 
 
@@ -376,8 +378,12 @@ async def _render(
             audio.extend(silence_like(data, start_at - position))
             position = start_at + duration
         else:
-            audio.extend(silence_like(data, _NO_FIT_PAUSE_SECONDS))
-            position += duration + _NO_FIT_PAUSE_SECONDS
+            # Пауза ставится только между блоками: файл не должен начинаться
+            # с тишины.
+            if position > 0:
+                audio.extend(silence_like(data, _NO_FIT_PAUSE_SECONDS))
+                position += _NO_FIT_PAUSE_SECONDS
+            position += duration
         audio.extend(data)
         reference = data
 
@@ -479,11 +485,16 @@ async def _synthesize_all(
     settings: Settings,
     reporter: Reporter,
 ) -> list[Clip]:
-    """Озвучивает все фрагменты в обычном темпе, по несколько запросов сразу."""
+    """Озвучивает все фрагменты в обычном темпе, по несколько запросов сразу.
+
+    Сколько запросов идёт одновременно, задаёт ``processing.request_concurrency``:
+    больше — быстрее, но сервис начинает отвечать 403 и запросы уходят в повторы.
+    """
     total = len(fragments)
+    concurrency = max(1, settings.processing.request_concurrency)
     clips: list[Clip] = []
-    for start in range(0, total, _REQUEST_CONCURRENCY):
-        batch = fragments[start:start + _REQUEST_CONCURRENCY]
+    for start in range(0, total, concurrency):
+        batch = fragments[start:start + concurrency]
         reporter.update(
             f"Озвучиваю фрагменты {start + 1}–{start + len(batch)} из {total}"
         )
